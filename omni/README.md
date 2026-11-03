@@ -177,6 +177,7 @@ Use ComfyUI's Template Browser for maintained upstream workflows.
 - [Image build and acceptance](docs/IMAGE_BUILD.md)
 - [ComfyUI usage](docs/COMFYUI.md)
 - [Native sparse attention and legacy-node migration](docs/SPARSE_ATTENTION.md)
+- [MiniMax H3 fused block and INT8 attention (preview)](docs/MINIMAX_H3_OPTIMIZATION.md)
 - [Windows Intel XPU ComfyUI Portable deployment](docs/WINDOWS_PORTABLE.md)
 - [Omni XPU kernel](omni_xpu_kernel/README.md)
 - [ComfyUI-OmniXPU](ComfyUI-OmniXPU/README.md)

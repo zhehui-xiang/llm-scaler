@@ -49,11 +49,25 @@ def _load_adapter(monkeypatch):
     monkeypatch.setitem(sys.modules, patches.__name__, patches)
     monkeypatch.setitem(sys.modules, adapters.__name__, adapters)
     _load_module(f"{patches.__name__}.debug", _PATCHES / "debug.py", monkeypatch)
+    # The H3 fused-block/INT8 sidecars run real XPU kernels; these metadata
+    # tests cover only the per-norm routing, so keep them off even when the
+    # installed omni_xpu_kernel ships omni_xpu_kernel.h3.
+    monkeypatch.setenv("OMNIXPU_H3_FUSED", "0")
+    monkeypatch.setenv("OMNIXPU_H3_INT8_ATTN", "0")
     return _load_module(
         f"{adapters.__name__}.h3_rms_modulation",
         _ADAPTERS / "h3_rms_modulation.py",
         monkeypatch,
     )
+
+
+def _routing_stats(adapter):
+    """Per-norm routing counters, after checking the sidecar routes stayed idle."""
+    stats = adapter.get_stats()
+    assert stats["fused_block"] == stats["fused_block_staged"] == 0
+    assert stats["fused_half"] == stats["int8_attention"] == 0
+    assert not stats["fused_block_fallback"] and not stats["fused_half_fallback"]
+    return {key: stats[key] for key in ("routed", "fallback", "reasons")}
 
 
 def _metadata(*shape, dtype=torch.bfloat16):
@@ -286,7 +300,7 @@ def test_compile_diagnostics_do_not_specialize_on_eager_counters(
             # It must not invalidate a compiled graph's guards.
             invoke(value)
         assert len(graphs) == 1
-        assert adapter.get_stats() == {
+        assert _routing_stats(adapter) == {
             "routed": 0 if fallback else 12,
             "fallback": 12 if fallback else 0,
             "reasons": {"input_layout": 12} if fallback else {},
@@ -373,7 +387,7 @@ def test_dispatch_uses_the_selected_interface_without_numerical_claims(
     assert state["projection_calls"] == 1
     assert state["native_calls"] == (2 if policy_supported else 0)
     assert state["fallback_norm_calls"] == (0 if policy_supported else 2)
-    assert adapter.get_stats() == {
+    assert _routing_stats(adapter) == {
         "routed": 2 if policy_supported else 0,
         "fallback": 0,
         "reasons": {},
@@ -444,7 +458,7 @@ def test_unsupported_input_layout_uses_original_interface(monkeypatch):
         "projection_calls": 1,
         "native_calls": 0,
     }
-    assert adapter.get_stats() == {
+    assert _routing_stats(adapter) == {
         "routed": 0,
         "fallback": 1,
         "reasons": {"input_layout": 1},
@@ -643,7 +657,7 @@ def test_local_fallback_preserves_single_projection_and_residual_order(
         "fallback_norm_calls": 2 - fused_calls,
     }
     reason = "modulation_layout" if fallback == "modulation" else "norm_weight_layout"
-    assert adapter.get_stats() == {
+    assert _routing_stats(adapter) == {
         "routed": fused_calls,
         "fallback": 2 - fused_calls,
         "reasons": {reason: 2 - fused_calls} if fused_calls < 2 else {},
@@ -726,7 +740,7 @@ def test_hook_fallback_keeps_original_norm_cast_and_hook_once(
     assert output is value
     assert events == ["norm", "cast", "hook", "release", "modulation"]
     assert state == {"projection_calls": 1, "native_calls": 1, "fallback_norm_calls": 1}
-    assert adapter.get_stats() == {
+    assert _routing_stats(adapter) == {
         "routed": 1, "fallback": 1, "reasons": {"norm_" + hook_attribute: 1},
     }
 
@@ -779,7 +793,7 @@ def test_training_falls_back_before_native_routing(monkeypatch):
         "projection_calls": 1,
         "native_calls": 0,
     }
-    assert adapter.get_stats() == {
+    assert _routing_stats(adapter) == {
         "routed": 0,
         "fallback": 1,
         "reasons": {"training": 1},
