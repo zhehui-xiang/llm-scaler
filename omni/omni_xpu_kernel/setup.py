@@ -710,6 +710,53 @@ def linux_rpath_flags(extension_name, *target_dirs):
     return ["-Wl,--disable-new-dtags,-rpath," + ":".join(rpaths)]
 
 
+def get_h3_compile_command(
+    icpx, extension_name, sources, src_dir, output_path,
+    python_include, torch_include, torch_lib, torch_cxx11_abi,
+):
+    """Linux BMG command for the MiniMax H3 sidecars (flags as validated on B70)."""
+    if IS_WINDOWS or BUILD_XPU_TARGET != "bmg":
+        raise RuntimeError(
+            f"{extension_name} is built only for OMNI_XPU_DEVICE=bmg on Linux"
+        )
+    cmd = [
+        icpx, "-fsycl", "-std=c++20",
+        "-O3", "-DNDEBUG", "-fPIC", "-shared",
+        "-fsycl-targets=spir64_gen",
+        "-Xsycl-target-backend", f"-device {get_cute_aot_target('bmg')}",
+    ]
+    if extension_name.endswith("h3_int8_attn"):
+        cutlass = os.environ.get("CUTLASS_SYCL_ROOT", "")
+        cmd += [
+            "-Xspirv-translator",
+            "-spirv-ext=+SPV_INTEL_split_barrier,+SPV_INTEL_2d_block_io,"
+            "+SPV_INTEL_subgroup_matrix_multiply_accumulate",
+            "-fno-sycl-instrument-device-code",
+            "-DCUTLASS_ENABLE_SYCL", "-DSYCL_INTEL_TARGET",
+            f"-I{src_dir}",
+            f"-I{cutlass}/include",
+            f"-I{cutlass}/tools/util/include",
+            f"-I{cutlass}/applications",
+            "-Wno-unknown-pragmas", "-Wno-unused-variable",
+            "-Wno-unused-but-set-variable", "-Wno-unused-local-typedef",
+            "-Wno-uninitialized", "-Wno-reorder-ctor",
+            "-Wno-logical-op-parentheses", "-Wno-unused-function",
+            "-Wno-deprecated-copy",
+        ]
+    cmd += [
+        f"-D_GLIBCXX_USE_CXX11_ABI={torch_cxx11_abi}",
+        f"-I{python_include}",
+        f"-I{torch_include}",
+        f"-I{torch_include}/torch/csrc/api/include",
+        "-Wno-deprecated-declarations", "-Wno-c++20-extensions",
+        f"-L{torch_lib}",
+        "-ltorch", "-ltorch_python", "-ltorch_cpu", "-ltorch_xpu",
+        "-lc10", "-lc10_xpu",
+        "-o", str(output_path),
+    ]
+    return cmd + [str(source) for source in sources]
+
+
 class ICPXBuildExt(build_ext):
     """Build extension using Intel icpx compiler directly."""
     
@@ -753,9 +800,13 @@ class ICPXBuildExt(build_ext):
         
         is_lgrf = ext.name.endswith("lgrf_sdp")
         is_cute = ext.name.endswith("cute_fmha_torch")
+        is_h3 = ext.name.startswith("omni_xpu_kernel.h3.")
 
         # Source directory
-        if is_lgrf:
+        if is_h3:
+            src_dir = Path(ext.sourcedir) / "omni_xpu_kernel" / "h3"
+            sources = [src_dir / (ext.name.rsplit(".", 1)[-1] + ".cpp")]
+        elif is_lgrf:
             src_dir = Path(ext.sourcedir) / "omni_xpu_kernel" / "lgrf_uni"
             sources = [src_dir / "sdp_kernels.cpp"]
         elif is_cute:
@@ -798,7 +849,13 @@ class ICPXBuildExt(build_ext):
         if onednn_notice_dir is not None:
             print(f"oneDNN notices: {onednn_notice_dir}")
         
-        if IS_WINDOWS:
+        if is_h3:
+            cmd = get_h3_compile_command(
+                icpx, ext.name, sources, src_dir, output_path,
+                python_include, torch_include, torch_lib, torch_cxx11_abi,
+            )
+            cmd += linux_rpath_flags(ext.name, torch_runtime_lib, runtime_lib)
+        elif IS_WINDOWS:
             # Windows compile command using icx
             python_lib_dir = sysconfig.get_config_var("LIBDIR") or str(Path(sys.executable).parent / "libs")
             python_version = f"{sys.version_info.major}{sys.version_info.minor}"
@@ -1081,7 +1138,12 @@ class ICPXExtension(Extension):
         # command keeps an absolute root separately for invoking icpx.
         source_root = Path(sourcedir)
         depends = []
-        if name.endswith("lgrf_sdp"):
+        if name.startswith("omni_xpu_kernel.h3."):
+            kernel_root = source_root / "omni_xpu_kernel" / "h3"
+            sources = [kernel_root / (name.rsplit(".", 1)[-1] + ".cpp")]
+            if name.endswith("h3_int8_attn"):
+                depends = [kernel_root / "int8_qk_fmha.hpp"]
+        elif name.endswith("lgrf_sdp"):
             kernel_root = source_root / "omni_xpu_kernel" / "lgrf_uni"
             sources = [kernel_root / "sdp_kernels.cpp"]
             depends = sorted(kernel_root.rglob("*.h"))
@@ -1181,6 +1243,19 @@ if _cutlass_sycl_required and not _cutlass_sycl_available:
     )
 if _cutlass_sycl_available and (not IS_WINDOWS or _cutlass_sycl_required):
     _ext_modules.append(ICPXExtension("omni_xpu_kernel.cute.cute_fmha_torch", sourcedir="."))
+
+# MiniMax H3 sidecars, loaded by ComfyUI-OmniXPU's H3 adapter. They are tuned
+# and validated only on BMG; OMNI_XPU_BUILD_H3=0 leaves them out.
+if (
+    not IS_WINDOWS
+    and BUILD_XPU_TARGET == "bmg"
+    and os.environ.get("OMNI_XPU_BUILD_H3", "1") != "0"
+):
+    _ext_modules.append(ICPXExtension("omni_xpu_kernel.h3.h3_fused", sourcedir="."))
+    if _cutlass_sycl_available:
+        _ext_modules.append(
+            ICPXExtension("omni_xpu_kernel.h3.h3_int8_attn", sourcedir=".")
+        )
 
 setup(
     name="omni_xpu_kernel",
