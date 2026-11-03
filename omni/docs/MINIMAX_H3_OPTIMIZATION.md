@@ -11,8 +11,8 @@ met.
 | INT8 attention | `omni_xpu_kernel.h3.h3_int8_attn` (`torch.ops.h3i8attn`) | Inside the fused block, Q/K `rms_rope` and INT8 quantization run as one kernel, and attention computes QK^T with INT8 DPAS (P·V stays bf16). |
 
 The kernels are built only for BMG on Linux (AOT `bmg-g21,bmg-g31`). They
-have been tuned and validated on Arc Pro B70 only; B580/B60 binaries are
-built but untested.
+have been tuned and validated on Arc Pro B70 only; the `bmg-g21` binary
+(Arc Pro B60) is built but untested.
 
 ## When the paths are used
 
