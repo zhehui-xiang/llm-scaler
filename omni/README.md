@@ -8,9 +8,11 @@ ComfyUI integration layer.
 > [!IMPORTANT]
 > The current `0.2.0-b3` beta preview is available only as a source build. The
 > published ComfyUI image is `intel/llm-scaler-omni:0.2.0-b2`. This source build is
-> experimental and focused on single-XPU ComfyUI workloads, and does not replace
-> the broader b8 image. For SGLang Diffusion, Raylight, or other multi-XPU
-> scenarios, use the published
+> experimental and focused on ComfyUI workloads, and does not replace the
+> broader b8 image. It includes the
+> [Raylight XPU fork](https://github.com/zhehui-xiang/raylight-XPU) for
+> multi-XPU ComfyUI (build with `COMFY_RAYLIGHT_COMMIT=` to leave it out). For
+> SGLang Diffusion or other multi-XPU scenarios, use the published
 > [`intel/llm-scaler-omni:0.1.0-b8`](https://github.com/intel/llm-scaler/releases/tag/omni-0.1.0-b8)
 > image.
 

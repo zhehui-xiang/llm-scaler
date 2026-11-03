@@ -6,7 +6,8 @@
 #
 # The default image intentionally excludes Xinference, SGLang/SGLDiffusion,
 # and the disabled media/3D node bundle. Raylight's xDiT-based multi-XPU
-# ComfyUI integration is not part of this image; this image targets one XPU.
+# ComfyUI integration is included from its XPU fork when COMFY_RAYLIGHT_COMMIT
+# is set (the default); build with an empty commit for a single-XPU image.
 
 ARG BASE_IMAGE=intel/omix:0.4.0-devel-ubuntu24.04@sha256:ee48e296161b7da989ffbfbbb3390b428e842590eda6258e1f86def3970ef0b3
 ARG PYTHON_VERSION=3.12
@@ -42,6 +43,8 @@ ARG COMFY_GGUF_COMMIT=39671fe73117ba97de7011e7e06e32599dcda06d
 ARG COMFY_NUNCHAKU_REPOSITORY=https://github.com/xiangyuT/ComfyUI-nunchaku-XPU.git
 ARG COMFY_NUNCHAKU_COMMIT=9f5604445f56154dd44e8b4acfed1aef868003c5
 ARG COMFY_NUNCHAKU_VERSION=1.2.1+xpu.3
+ARG COMFY_RAYLIGHT_REPOSITORY=https://github.com/zhehui-xiang/raylight-XPU.git
+ARG COMFY_RAYLIGHT_COMMIT=380218d8b1eee1aa49516da43bc9b02e7c3327e5
 ARG LLM_SCALER_SOURCE_REVISION=unknown
 ARG LLM_SCALER_SOURCE_DIRTY=unknown
 
@@ -294,6 +297,24 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     git -C ComfyUI-nunchaku-XPU checkout --detach FETCH_HEAD && \
     pip install -r ComfyUI-nunchaku-XPU/requirements.txt && \
     pip install --no-deps --no-build-isolation ./ComfyUI-nunchaku-XPU
+
+# Raylight multi-XPU (Ray workers + xDiT sequence parallelism). Its
+# requirements only use lower bounds, so pin the resolution validated with
+# Torch 2.14 XPU; none of these replace the Torch/Transformers/Diffusers stack.
+ARG COMFY_RAYLIGHT_REPOSITORY
+ARG COMFY_RAYLIGHT_COMMIT
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    if [ -n "${COMFY_RAYLIGHT_COMMIT}" ]; then \
+        cd /llm/ComfyUI/custom_nodes && \
+        git clone --filter=blob:none --no-checkout \
+            "${COMFY_RAYLIGHT_REPOSITORY}" raylight && \
+        git -C raylight fetch --depth 1 origin "${COMFY_RAYLIGHT_COMMIT}" && \
+        git -C raylight checkout --detach FETCH_HEAD && \
+        pip install -r raylight/requirements.txt \
+            ray==2.59.0 xfuser==0.7.0 yunchang==0.6.4 DistVAE==0.1.0 \
+            kernels==0.18.1 hf_transfer==0.1.9; \
+    fi
 
 # Keep the only patched third-party node last. Editing this local patch no
 # longer invalidates any of the unpatched third-party node layers above.
