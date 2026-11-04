@@ -90,6 +90,8 @@ NUNCHAKU_VERSION="${COMFY_NUNCHAKU_VERSION:-1.2.1+xpu.3}"
 # Set COMFY_RAYLIGHT_COMMIT= (empty) to leave Raylight out of the image.
 RAYLIGHT_REPOSITORY="${COMFY_RAYLIGHT_REPOSITORY:-https://github.com/zhehui-xiang/raylight-XPU.git}"
 RAYLIGHT_COMMIT="${COMFY_RAYLIGHT_COMMIT-380218d8b1eee1aa49516da43bc9b02e7c3327e5}"
+FLASHVSR_REPOSITORY="${COMFY_FLASHVSR_REPOSITORY:-https://github.com/zhehui-xiang/ComfyUI-FlashVSR_Ultra_Fast.git}"
+FLASHVSR_COMMIT="${COMFY_FLASHVSR_COMMIT:-55e7fcb24bee9b050b86d09a24fcec8008355ddd}"
 SYCL_TLA_REPOSITORY="${OMNI_SYCL_TLA_REPOSITORY:-https://github.com/intel/sycl-tla.git}"
 SYCL_TLA_COMMIT="${OMNI_SYCL_TLA_COMMIT:-2fc09973bfdf15755090fcb0e3b6ad236408a992}"
 
@@ -142,6 +144,8 @@ DOCKER_ARGS=(
     --build-arg "COMFY_NUNCHAKU_VERSION=${NUNCHAKU_VERSION}"
     --build-arg "COMFY_RAYLIGHT_REPOSITORY=${RAYLIGHT_REPOSITORY}"
     --build-arg "COMFY_RAYLIGHT_COMMIT=${RAYLIGHT_COMMIT}"
+    --build-arg "COMFY_FLASHVSR_REPOSITORY=${FLASHVSR_REPOSITORY}"
+    --build-arg "COMFY_FLASHVSR_COMMIT=${FLASHVSR_COMMIT}"
     --build-arg "https_proxy=${HTTPS_PROXY}"
     --build-arg "http_proxy=${HTTP_PROXY}"
     --build-arg "no_proxy=${NO_PROXY}"

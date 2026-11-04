@@ -45,6 +45,8 @@ ARG COMFY_NUNCHAKU_COMMIT=9f5604445f56154dd44e8b4acfed1aef868003c5
 ARG COMFY_NUNCHAKU_VERSION=1.2.1+xpu.3
 ARG COMFY_RAYLIGHT_REPOSITORY=https://github.com/zhehui-xiang/raylight-XPU.git
 ARG COMFY_RAYLIGHT_COMMIT=380218d8b1eee1aa49516da43bc9b02e7c3327e5
+ARG COMFY_FLASHVSR_REPOSITORY=https://github.com/zhehui-xiang/ComfyUI-FlashVSR_Ultra_Fast.git
+ARG COMFY_FLASHVSR_COMMIT=55e7fcb24bee9b050b86d09a24fcec8008355ddd
 ARG LLM_SCALER_SOURCE_REVISION=unknown
 ARG LLM_SCALER_SOURCE_DIRTY=unknown
 
@@ -315,6 +317,25 @@ RUN --mount=type=cache,target=/root/.cache/pip \
             ray==2.59.0 xfuser==0.7.0 yunchang==0.6.4 DistVAE==0.1.0 \
             kernels==0.18.1 hf_transfer==0.1.9; \
     fi
+
+# FlashVSR video super-resolution, XPU fork. Its requirements list unpinned
+# torch/torchvision; drop them so the pinned XPU stack is never re-resolved.
+# Triton comes from the torch XPU wheel (triton-xpu).
+ARG COMFY_FLASHVSR_REPOSITORY
+ARG COMFY_FLASHVSR_COMMIT
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    cd /llm/ComfyUI/custom_nodes && \
+    git clone --filter=blob:none --no-checkout \
+        "${COMFY_FLASHVSR_REPOSITORY}" ComfyUI-FlashVSR_Ultra_Fast && \
+    git -C ComfyUI-FlashVSR_Ultra_Fast fetch --depth 1 origin \
+        "${COMFY_FLASHVSR_COMMIT}" && \
+    git -C ComfyUI-FlashVSR_Ultra_Fast checkout --detach FETCH_HEAD && \
+    grep -Ev '^(torch|torchvision|torchaudio)([[:space:]<>=!~].*)?$' \
+        ComfyUI-FlashVSR_Ultra_Fast/requirements.txt \
+        > /tmp/flashvsr-requirements.txt && \
+    pip install -r /tmp/flashvsr-requirements.txt && \
+    pip check
 
 # Keep the only patched third-party node last. Editing this local patch no
 # longer invalidates any of the unpatched third-party node layers above.
